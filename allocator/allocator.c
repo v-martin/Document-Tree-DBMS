@@ -11,8 +11,6 @@
 #define PAGE_SIZE 64
 
 
-op_status save_page(struct page_t *pPage, FILE *pFile);
-
 allocator_t *allocator_init(const char* filename) {
     FILE *file = fopen(filename, "r+");
     if (file == NULL) {

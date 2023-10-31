@@ -23,6 +23,6 @@ void buffer_free(buffer_t *buffer);
 
 op_status buffer_write(buffer_t *buffer, const void *data, uint64_t data_size);
 
-void *buffer_read(const buffer_t *buffer, uint64_t offset);
+char *buffer_read(const buffer_t *buffer, uint64_t offset);
 
 #endif //DOCUMENTTREE_BUFFER_H

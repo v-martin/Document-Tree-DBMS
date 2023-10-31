@@ -36,7 +36,6 @@ void buffer_free(buffer_t *buffer) {
 
 op_status buffer_write(buffer_t *buffer, const void *data, uint64_t data_size) {
     assert(buffer != NULL);
-    assert(data != NULL);
     uint64_t new_size = buffer->size + data_size;
     char *new_data = (char *)realloc(buffer->data, new_size);
     if (new_data == NULL) {
@@ -48,7 +47,7 @@ op_status buffer_write(buffer_t *buffer, const void *data, uint64_t data_size) {
     return SUCCESS;
 }
 
-void *buffer_read(const buffer_t *buffer, uint64_t offset) {
+char *buffer_read(const buffer_t *buffer, uint64_t offset) {
     assert(buffer != NULL);
     if (offset >= buffer->size) {
         return NULL;

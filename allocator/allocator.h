@@ -70,6 +70,10 @@ allocator_t *allocator_init(const char* filename);
 
 op_status allocator_free(allocator_t *allocator);
 
+void page_free(page_t *page);
+
+void page_header_free(page_header_t *header);
+
 database_t *db_init(const char *filename);
 
 op_status db_free(database_t *database);

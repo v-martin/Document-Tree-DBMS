@@ -31,11 +31,19 @@ allocator_t *allocator_init(const char* filename) {
     return allocator;
 }
 
-op_status page_free(page_t *page) {
+void page_header_free(page_header_t *header) {
+    assert(header != NULL);
+    header->next = NULL;
+    header->prev = NULL;
+    header->record_size = 0;
+    header->last_record_offset = 0;
+    free(header);
+}
+
+void page_free(page_t *page) {
     assert(page != NULL);
-    free(page->header);
+//    page_header_free(page->header);
     free(page);
-    return SUCCESS;
 }
 
 op_status allocator_free(allocator_t *allocator) {
@@ -47,11 +55,8 @@ op_status allocator_free(allocator_t *allocator) {
         return ERROR;
     }
 
-    st = page_free(allocator->page);
+    page_free(allocator->page);
 
-    if (st == ERROR) {
-        return ERROR;
-    }
     free(allocator);
 
     return SUCCESS;
@@ -89,7 +94,7 @@ op_status create_page_header(page_t *page, uint64_t record_size, page_t *prev, p
         free(header);
         return ERROR;
     }
-    header->last_record_offset = sizeof(page_header_t);
+    header->last_record_offset = 0;
     header->record_size = record_size;
     header->prev = prev;
     header->next = next;
@@ -187,7 +192,6 @@ record_t *create_record(const key_value_t *key_values, size_t num_key_values) {
 
 void record_free(record_t *record) {
     assert(record != NULL);
-    free(record->key_values);
     record->size = 0;
     record->num_key_values = 0;
     free(record);
@@ -304,7 +308,6 @@ op_status write_record(allocator_t *allocator, record_t *record) {
     assert(allocator != NULL);
     assert(record != NULL);
     buffer_t *buffer = bufferize_record(record);
-    record_free(record);
     if (buffer == NULL || buffer->size > allocator->page->header->record_size) {
         return ERROR;
     }
@@ -342,8 +345,9 @@ op_status write_record(allocator_t *allocator, record_t *record) {
             }
         }
     } else {
-        memmove(allocator->page->data + offset, buffer->data, allocator->page->header->record_size);
-        allocator->page->header->last_record_offset += buffer_size;
+        page_header_t *header = allocator->page->header;
+        memcpy(allocator->page->data + offset, buffer->data, header->record_size);
+        header->last_record_offset += header->record_size;
     }
     buffer_free(buffer);
     return SUCCESS;
@@ -359,7 +363,7 @@ record_t *read_record(allocator_t *allocator, size_t index) {
     page_t *page = allocator->page;
     page_header_t *header = page->header;
 
-    offset_t offset = header->record_size * (index + 1);
+    offset_t offset = header->record_size * index;
 
     if (offset >= header->last_record_offset) {
         return NULL;
@@ -372,21 +376,47 @@ record_t *read_record(allocator_t *allocator, size_t index) {
         return NULL;
     }
 
-    buffer_t record_buffer;
-    record_buffer.size = size;
-    record_buffer.data = malloc(size);
-    if (record_buffer.data == NULL) {
+    buffer_t *record_buffer = buffer_init(0);
+    if (record_buffer == NULL) {
         return NULL;
     }
 
-    memcpy(record_buffer.data, page->data + offset, size);
+    op_status st = buffer_write(record_buffer, page->data + offset, size);
+    if (st == ERROR) {
+        buffer_free(record_buffer);
+        return NULL;
+    }
+    offset = sizeof(uint32_t);
+    uint32_t *num_key_values = (uint32_t *)buffer_read(record_buffer, offset);
+    if (num_key_values == NULL) {
+        buffer_free(record_buffer);
+        return NULL;
+    }
+    offset += sizeof(uint32_t);
+    char *key_val = buffer_read(record_buffer, offset);
+    char *key = malloc(sizeof(strlen(key_val) + 1));
+    strcpy(key, key_val);
+    if (key == NULL) {
+        buffer_free(record_buffer);
+        return NULL;
+    }
+    offset += strlen(key) + 1;
+    value_type_t *value_type = (value_type_t *)buffer_read(record_buffer, offset);
+    if (value_type == NULL) {
+        buffer_free(record_buffer);
+        return NULL;
+    }
+    offset += sizeof(value_type_t);
+    char *value = malloc(sizeof(union value_t));
+    *value = *buffer_read(record_buffer, offset);
+    if (value == NULL) {
+        buffer_free(record_buffer);
+        return NULL;
+    }
+    key_value_t *key_value = alloc_key_value(key, *value_type, value);
+    record_t *record = create_record(key_value,1);
 
-    record_t *record = NULL;
-    record->size = size;
-    memcpy(&record->num_key_values, record_buffer.data + sizeof(uint32_t), sizeof(uint32_t));
-    memcpy(record->key_values, record_buffer.data + 2 * sizeof(uint32_t), size - 2 * sizeof(uint32_t));
-
-    free(record_buffer.data);
+    buffer_free(record_buffer);
 
     return record;
 }
